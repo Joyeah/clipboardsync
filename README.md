@@ -39,3 +39,8 @@ python main.py --port 12345
 ## Usage
 
 Press Crtl+Alt+V to sync clipboard
+
+## Screenshots
+
+![screenshot1](./screenshot0.png)
+![screenshot2](./screenshot1.png)

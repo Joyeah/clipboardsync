@@ -171,9 +171,8 @@ def for_canonical(f):
 
 def check_sync_status():
     global sync_status
-    if sync_status == "Automatic":
+    if starting and sync_status == "Automatic":
         on_hotkey_active()
-    if starting:
         time.sleep(0.5)
         check_sync_status()
 
