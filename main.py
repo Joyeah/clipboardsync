@@ -8,6 +8,7 @@
 '''
 import argparse
 import ipaddress
+import time
 import pystray
 from PIL import Image, ImageDraw
 import threading
@@ -17,8 +18,10 @@ import pyperclip
 
 from iptools import scan_udpserver_multithread
 
-
+threads = []
 starting = False  # 用于标记是否已经启动
+sync_status = "<ctrl>+<alt>+v"  # 用于标记是否自动同步剪贴板
+latest_clipboard_content = ""  # 用于存储最新的剪贴板内容，用于避免重复发送
 # UDP服务器
 my_ip = socket.gethostbyname(socket.gethostname())
 print(f"My IP address: {my_ip}")
@@ -66,27 +69,41 @@ def on_scan(icon, item):
 
 # 退出程序
 def exit_program(icon, item):
+    global starting, threads
     print("Exiting pystray...")
     icon.stop()
     print("Exiting hotkey listener...")
     listener.stop()  # 停止热键监听器
     print("Exiting UDP server...")
-    starting = False  # 设置为False，表示已经退出
+    starting = False  # 设置为False，通知所有线程退出
+    time.sleep(1)  # 等待一段时间，确保线程退出
+    for thread in threads:
+        print(f"thread `{thread.name}` is alive: {thread.is_alive()}")
+        
     
-
+def toggle_autosync(icon, item):
+    global sync_status
+    sync_status = "Automatic" if sync_status == "<ctrl>+<alt>+v" else "<ctrl>+<alt>+v"
+    print(f"Sync status changed to: {sync_status}")
+    icon.menu = create_menu()
+    icon.update_menu()
 
 # 启动系统托盘图标（运行在主线程之外）
-def run_systray():
-    image = create_image()
-
-    menu = (
+def create_menu():
+    return (
+        pystray.MenuItem(f"Sync: {sync_status}", toggle_autosync),
         pystray.MenuItem('Show Clients', show_clients),
         pystray.MenuItem('Scan', on_scan),
+        pystray.MenuItem(pystray.Menu.SEPARATOR, None),
         pystray.MenuItem('Exit', exit_program)
     )
-
+def run_systray():
+    global is_checked
+    menu = create_menu()
+    image = create_image()
     icon = pystray.Icon("test_icon", image, "ClipboardSync", menu)
     icon.run()
+    
 
 
 def start_udp_server():
@@ -124,9 +141,15 @@ def start_udp_server():
             
 
 def on_hotkey_active():
-    global clients
+    global clients, latest_clipboard_content
     # print('Global hotkey activated!')
     clipboard_content = pyperclip.paste()
+    if clipboard_content == "":
+        return
+    elif clipboard_content == latest_clipboard_content:
+        return
+    latest_clipboard_content = clipboard_content
+
     print(f'Send Clipboard content: {clipboard_content}')
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
         for client in clients:
@@ -146,6 +169,13 @@ def on_hotkey_active():
 def for_canonical(f):
     return lambda k: f(listener.canonical(k))
 
+def check_sync_status():
+    global sync_status
+    if sync_status == "Automatic":
+        on_hotkey_active()
+    if starting:
+        time.sleep(0.5)
+        check_sync_status()
 
 # 主程序中启动托盘图标作为一个线程
 if __name__ == "__main__":
@@ -156,28 +186,40 @@ if __name__ == "__main__":
     port = args.port
 
     starting = True  # 设置为True，表示已经启动
+
     # 1. 启动托盘图标
     systray_thread = threading.Thread(target=run_systray)
     systray_thread.daemon = True  # 设置为守护线程
     systray_thread.start()
+    threads.append(systray_thread)
     print("System tray icon is running...")
 
     # 2. 启动UDP服务器
     udp_server_thread = threading.Thread(target=start_udp_server)
-    udp_server_thread.daemon = True  # 设置为守护线程
+    # udp_server_thread.daemon = True  # 设置为守护线程
     udp_server_thread.start()
+    threads.append(udp_server_thread)
     print("UDP server is running...")
 
     # 3. 查找客户端地址
-    threading.Thread(target=find_client_address).start()
-    print("Finding client address...")
-    # TODO 定时检测客户端
-    
+    t_find_addr = threading.Thread(target=find_client_address)
+    t_find_addr.start()
+    threads.append(t_find_addr)
 
-    # 4. 启动全局热键监听
+    # 4. 自动同步剪贴板
+    t_check_sync = threading.Thread(target=check_sync_status)
+    t_check_sync.start()
+    threads.append(t_check_sync)
+
+    # latest. 启动全局热键监听
     hotkey = keyboard.HotKey(keyboard.HotKey.parse('<ctrl>+<alt>+v'), on_hotkey_active)
-    with keyboard.Listener(
+    listener = keyboard.Listener(
         on_press=for_canonical(hotkey.press),
-        on_release=for_canonical(hotkey.release)) as listener:
-        print("Global hotkey listener is running...")
-        listener.join()
+        on_release=for_canonical(hotkey.release))
+    listener.start()
+    print("Global hotkey listener is running...")
+    threads.append(listener)
+
+    for thread in threads:
+        thread.join()
+    print("All threads have finished.")

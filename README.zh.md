@@ -15,7 +15,9 @@
 - 手动扫描局域网内其他同步端
 - 当收到其它同步端时，自动添加到剪切板同步列表
 - 通知接收到新剪切板内容
-- TODO: 剪切板自动同步功能
+- 剪切板自动同步功能（v1.0.1)
+- TODO: hotkey to exist the program
+- TODO: hotkey to switch automatic sync clipboard
 
 
 ## 安装

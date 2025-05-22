@@ -15,7 +15,9 @@
 - show udp clients
 - When recive a new client's message, then add to list.
 - notice when recive a new client's message.
-- TODO: auto sync clipboard
+- auto sync clipboard （v1.0.1)
+- TODO: hotkey to exist the program
+- TODO: hotkey to switch automatic sync clipboard
 
 
 ## Install
